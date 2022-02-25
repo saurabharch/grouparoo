@@ -32,6 +32,7 @@ import { getLock } from "../locks";
 import { ExportOps } from "./export";
 import { PropertiesCache } from "../caches/propertiesCache";
 import { DestinationsCache } from "../caches/destinationsCache";
+import { Errors } from "../errors";
 
 function deepStrictEqualBoolean(a: any, b: any): boolean {
   try {
@@ -911,12 +912,16 @@ export namespace DestinationOps {
     return { success, error, retryexportIds, retryDelay };
   }
 
-  async function cancelOldExport(oldExport: Export) {
+  async function cancelExport(
+    oldExport: Export,
+    errorMessage?: string,
+    errorLevel?: Errors.ErrorLevel
+  ) {
     await oldExport.update({
       state: "canceled",
       sendAt: null,
-      errorMessage: `Replaced by more recent export`,
-      errorLevel: null,
+      errorMessage: errorMessage ?? "",
+      errorLevel: errorLevel ?? "info",
       completedAt: new Date(),
     });
   }
@@ -935,6 +940,8 @@ export namespace DestinationOps {
     const exportsWithChanges: Export[] = [];
     const exportsWithoutChanges: Export[] = [];
     const locks: Awaited<ReturnType<typeof getLock>>[] = [];
+
+    const deliveryMode = destination.deliveryMode;
 
     for (const givenExport of givenExports) {
       if (givenExport.hasChanges) {
@@ -978,7 +985,27 @@ export namespace DestinationOps {
     try {
       for (const consideredExport of exportsWithChanges) {
         if (!mostRecentExportIds.includes(consideredExport.id)) {
-          await cancelOldExport(consideredExport);
+          await cancelExport(
+            consideredExport,
+            `Replaced by more recent export`,
+            "info"
+          );
+          continue;
+        }
+
+        const mostRecentExport = await Export.findOne({
+          where: {
+            destinationId: destination.id,
+            recordId: consideredExport.recordId,
+            state: "complete",
+          },
+          order: [["completedAt", "desc"]],
+        });
+
+        const alreadyRanOnce = mostRecentExport && deliveryMode === "once";
+
+        if (alreadyRanOnce) {
+          await cancelExport(consideredExport, "Destination is only delivering records once", "info");
           continue;
         }
 

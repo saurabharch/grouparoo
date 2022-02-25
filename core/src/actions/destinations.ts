@@ -174,6 +174,7 @@ export class DestinationEdit extends AuthenticatedAction {
     state: { required: false },
     options: { required: false, formatter: APIData.ensureObject },
     mapping: { required: false, formatter: APIData.ensureObject },
+    deliveryMode: { required: false },
     syncMode: { required: false },
     destinationGroupMemberships: {
       required: false,
@@ -208,6 +209,7 @@ export class DestinationEdit extends AuthenticatedAction {
       name: params.name,
       state: params.state,
       syncMode: params.syncMode,
+      deliveryMode: params.deliveryMode,
     });
 
     let oldRun: Run;
